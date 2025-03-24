@@ -21,6 +21,10 @@
 
 /* macros */
 
+#ifndef GRID_SIZE
+#define GRID_SIZE 128
+#endif
+
 #define IX(i, j) ((i) + (N + 2) * (j))
 
 /* external definitions (from solver.c) */
@@ -193,7 +197,7 @@ int main(int argc, char** argv)
     }
 
     if (argc == 1) {
-        N = 128;
+        N = GRID_SIZE;
         dt = 0.1f;
         diff = 0.0f;
         visc = 0.0f;
