@@ -33,6 +33,7 @@ extern void vel_step(int N, float* u, float* v, float* u0, float* v0, float visc
 static int N;
 static float dt, diff, visc;
 static float force, source;
+static float max_cells_per_ms;
 
 static float *u, *v, *u_prev, *v_prev;
 static float *dens, *dens_prev;
@@ -127,6 +128,11 @@ static void react(float* d, float* u, float* v)
     return;
 }
 
+static double max(double a, double b) {
+    if (a > b) return a;
+    else return b;
+}
+
 static void one_step(void)
 {
     static int times = 1;
@@ -149,6 +155,8 @@ static void one_step(void)
     dens_ms_p_cell += 1.0e3 * (wtime() - start_t) / (N * N);
 
     if (1.0 < wtime() - one_second) { /* at least 1s between stats */
+        max_cells_per_ms = max(max_cells_per_ms, 
+                                times / (react_ms_p_cell + vel_ms_p_cell + dens_ms_p_cell));
         printf("cells per ms: %lf\n", 
                times / (react_ms_p_cell + vel_ms_p_cell + dens_ms_p_cell));
         one_second = wtime();
@@ -209,6 +217,7 @@ int main(int argc, char** argv)
     for (i = 0; i < 2048; i++) {
         one_step();
     }
+    printf("max cells per ms: %lf\n", max_cells_per_ms);
     free_data();
 
     exit(0);
