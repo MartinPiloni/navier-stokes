@@ -2,3 +2,4 @@ demo
 headless
 .depend
 *.o
+*.json
