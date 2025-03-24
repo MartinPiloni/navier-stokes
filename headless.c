@@ -157,8 +157,8 @@ static void one_step(void)
     if (1.0 < wtime() - one_second) { /* at least 1s between stats */
         max_cells_per_ms = max(max_cells_per_ms, 
                                 times / (react_ms_p_cell + vel_ms_p_cell + dens_ms_p_cell));
-        printf("cells per ms: %lf\n", 
-               times / (react_ms_p_cell + vel_ms_p_cell + dens_ms_p_cell));
+        //printf("cells per ms: %lf\n", 
+        //       times / (react_ms_p_cell + vel_ms_p_cell + dens_ms_p_cell));
         one_second = wtime();
         react_ms_p_cell = 0.0;
         vel_ms_p_cell = 0.0;
@@ -217,7 +217,7 @@ int main(int argc, char** argv)
     for (i = 0; i < 2048; i++) {
         one_step();
     }
-    printf("max cells per ms: %lf\n", max_cells_per_ms);
+    printf("%lf\n", max_cells_per_ms);
     free_data();
 
     exit(0);
