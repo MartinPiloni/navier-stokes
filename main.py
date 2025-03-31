@@ -12,17 +12,18 @@ def benchmark_headless(compilers = ["gcc"], flags=["-O0"], grid_size = [128]):
 
                     run = ["./headless"]
                     res = subprocess.run(run, capture_output=True)
-                    cells_ms = float(res.stdout.decode().strip())
+                    cells_ms, time = res.stdout.decode().split()
                     data.append({"Compiler": compiler, 
                                  "Flags": flag, 
                                  "cellms": cells_ms, 
-                                 "grid_size": size})
+                                 "grid_size": size,
+                                 "time": time})
 
                     clean = ["make", "clean"]
                     subprocess.run(clean)
         json.dump(data, file, indent=1)
 
 compilers = ["gcc", "clang"]
-flags = ["-O0"]
-grid_size = [64, 128]
+flags = ["-Ofast -march=native"]
+grid_size = [128]
 benchmark_headless(compilers, flags, grid_size)

@@ -218,10 +218,12 @@ int main(int argc, char** argv)
         exit(1);
     }
     clear_data();
+    float start_time = wtime();
     for (i = 0; i < 2048; i++) {
         one_step();
     }
     printf("%lf\n", max_cells_per_ms);
+    printf("%lf\n", wtime() - start_time);
     free_data();
 
     exit(0);
