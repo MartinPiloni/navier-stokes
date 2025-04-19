@@ -24,6 +24,6 @@ def benchmark_headless(compilers = ["gcc"], flags=["-O0"], grid_size = [128]):
         json.dump(data, file, indent=1)
 
 compilers = ["gcc", "clang"]
-flags = ["-O3 -ffast-math -march=native"]
+flags = ["-O3 -ffast-math -march=native -ftree-vectorize"]
 grid_size = [128]
 benchmark_headless(compilers, flags, grid_size)
