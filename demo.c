@@ -18,12 +18,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "indices.h"
 #include "solver.h"
 #include "wtime.h"
 
 /* macros */
 
-#define IX(i, j) ((i) + (N + 2) * (j))
+#define IX(x,y) (rb_idx((x),(y),(N+2)))
 
 /* global variables */
 
