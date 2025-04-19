@@ -1,9 +1,11 @@
 #include <stddef.h>
 #include <immintrin.h>
+#include <stdio.h>
 
 #include "solver.h"
 #include "indices.h"
 
+#define ALIGN32 __attribute__((aligned(32)))
 #define IX(x,y) (rb_idx((x),(y),(n+2)))
 #define SWAP(x0,x) {float * tmp=x0;x0=x;x=tmp;}
 
@@ -48,15 +50,16 @@ static void lin_solve_rb_step(grid_color color,
     unsigned int width = (n + 2) / 2;
 
     for (unsigned int y = 1; y <= n; ++y, shift = -shift, start = 1 - start) {
-        for (unsigned int x = start; x < width - (1 - start); ++x) {
+	unsigned int x;
+        for (x = start; x + 7 < width - (1 - start); x += 8) {
             int index = idx(x, y, width);
 
             // Cargar datos
-            __m256 s0   = _mm256_load_ps(&same0[index]);
-            __m256 nM   = _mm256_load_ps(&neigh[index - width]);   
-            __m256 nC   = _mm256_load_ps(&neigh[index]);           
-            __m256 nE   = _mm256_load_ps(&neigh[index + shift]);   
-            __m256 nS   = _mm256_load_ps(&neigh[index + width]);   
+            __m256 s0   = _mm256_loadu_ps(&same0[index]);
+            __m256 nM   = _mm256_loadu_ps(&neigh[index - width]);   
+            __m256 nC   = _mm256_loadu_ps(&neigh[index]);           
+            __m256 nE   = _mm256_loadu_ps(&neigh[index + shift]);   
+            __m256 nS   = _mm256_loadu_ps(&neigh[index + width]);   
 
             // Operaciones
             __m256 sum = _mm256_add_ps(nM, nC);
@@ -67,8 +70,19 @@ static void lin_solve_rb_step(grid_color color,
             sum = _mm256_div_ps(sum, avx_c);
 
             // Guardar resultado
-            _mm256_store_ps(&same[index], sum);
+            _mm256_storeu_ps(&same[index], sum);
         }
+
+	if ((width - 1) % 8 == 0) continue;
+
+	while (x < width - (1 - start)) {
+            int index = idx(x, y, width);
+	    same[index] = (same0[index] + a * (neigh[index + width] +
+				               neigh[index] +
+					       neigh[index + shift] +
+					       neigh[index + width])) / c;
+	    x++;
+	}
     }
 }
 
