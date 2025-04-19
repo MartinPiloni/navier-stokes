@@ -1,6 +1,5 @@
 #include <stddef.h>
 #include <immintrin.h>
-#include <stdio.h>
 
 #include "solver.h"
 #include "indices.h"
@@ -76,7 +75,7 @@ static void lin_solve_rb_step(grid_color color,
 	if ((width - 1) % 8 == 0) continue;
 
 	while (x < width - (1 - start)) {
-            int index = idx(x, y, width);
+        int index = idx(x, y, width);
 	    same[index] = (same0[index] + a * (neigh[index + width] +
 				               neigh[index] +
 					       neigh[index + shift] +
