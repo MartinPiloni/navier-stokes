@@ -41,18 +41,15 @@ static void lin_solve_rb_step(grid_color color,
                               const float * restrict neigh,
                               float * restrict same)
 {
-    const __m256 avx_a = _mm256_set1_ps(a);
-    const __m256 avx_c = _mm256_set1_ps(c);
     int shift = color == RED ? 1 : -1;
     unsigned int start = color == RED ? 0 : 1;
-
     unsigned int width = (n + 2) / 2;
-
+    const __m256 avx_a = _mm256_set1_ps(a);
+    const __m256 avx_c = _mm256_set1_ps(c);
     for (unsigned int y = 1; y <= n; ++y, shift = -shift, start = 1 - start) {
-	unsigned int x;
+	    unsigned int x;
         for (x = start; x + 7 < width - (1 - start); x += 8) {
             int index = idx(x, y, width);
-
             __m256 s0   = _mm256_loadu_ps(&same0[index]);
             __m256 up   = _mm256_loadu_ps(&neigh[index - width]);   
             __m256 left   = _mm256_loadu_ps(&neigh[index]);           
@@ -66,17 +63,15 @@ static void lin_solve_rb_step(grid_color color,
 
             _mm256_storeu_ps(&same[index], result);
         }
-
-	if ((width - 1) % 8 == 0) continue;
-
-	while (x < width - (1 - start)) {
-        int index = idx(x, y, width);
-	    same[index] = (same0[index] + a * (neigh[index - width] +
-				                           neigh[index] +
-					                       neigh[index + shift] +
-					                       neigh[index + width])) / c;
-	    x++;
-	}
+        if ((width - 1) % 8 == 0) continue;
+        while (x < width - (1 - start)) {
+            int index = idx(x, y, width);
+            same[index] = (same0[index] + a * (neigh[index - width] +
+                                               neigh[index] +
+                                               neigh[index + shift] +
+                                               neigh[index + width])) / c;
+            x++;
+        }
     }
 }
 
