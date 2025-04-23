@@ -53,33 +53,28 @@ static void lin_solve_rb_step(grid_color color,
         for (x = start; x + 7 < width - (1 - start); x += 8) {
             int index = idx(x, y, width);
 
-            // Cargar datos
             __m256 s0   = _mm256_loadu_ps(&same0[index]);
-            __m256 nM   = _mm256_loadu_ps(&neigh[index - width]);   
-            __m256 nC   = _mm256_loadu_ps(&neigh[index]);           
-            __m256 nE   = _mm256_loadu_ps(&neigh[index + shift]);   
-            __m256 nS   = _mm256_loadu_ps(&neigh[index + width]);   
+            __m256 up   = _mm256_loadu_ps(&neigh[index - width]);   
+            __m256 left   = _mm256_loadu_ps(&neigh[index]);           
+            __m256 right = _mm256_loadu_ps(&neigh[index + shift]);   
+            __m256 down = _mm256_loadu_ps(&neigh[index + width]);   
 
-            // Operaciones
-            __m256 sum = _mm256_add_ps(nM, nC);
-            sum = _mm256_add_ps(sum, nE);
-            sum = _mm256_add_ps(sum, nS);
-            sum = _mm256_mul_ps(sum, avx_a);
-            sum = _mm256_add_ps(sum, s0);
-            sum = _mm256_div_ps(sum, avx_c);
+            __m256 sum = _mm256_add_ps(_mm256_add_ps(up, left), _mm256_add_ps(right, down));
+            __m256 result = _mm256_mul_ps(sum, avx_a);
+            result = _mm256_add_ps(result, s0);
+            result = _mm256_div_ps(result, avx_c);
 
-            // Guardar resultado
-            _mm256_storeu_ps(&same[index], sum);
+            _mm256_storeu_ps(&same[index], result);
         }
 
 	if ((width - 1) % 8 == 0) continue;
 
 	while (x < width - (1 - start)) {
         int index = idx(x, y, width);
-	    same[index] = (same0[index] + a * (neigh[index + width] +
-				               neigh[index] +
-					       neigh[index + shift] +
-					       neigh[index + width])) / c;
+	    same[index] = (same0[index] + a * (neigh[index - width] +
+				                           neigh[index] +
+					                       neigh[index + shift] +
+					                       neigh[index + width])) / c;
 	    x++;
 	}
     }
