@@ -17,6 +17,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include <immintrin.h>
+
 #include "indices.h"
 #include "wtime.h"
 
@@ -54,28 +56,28 @@ static float *dens, *dens_prev;
 static void free_data(void)
 {
     if (u) {
-        free(u);
+        _mm_free(u);
     }
     if (v) {
-        free(v);
+        _mm_free(v);
     }
     if (u_prev) {
-        free(u_prev);
+        _mm_free(u_prev);
     }
     if (v_prev) {
-        free(v_prev);
+        _mm_free(v_prev);
     }
     if (dens) {
-        free(dens);
+        _mm_free(dens);
     }
     if (dens_prev) {
-        free(dens_prev);
+        _mm_free(dens_prev);
     }
 }
 
 static void clear_data(void)
 {
-    int i, size = (N + 2) * (N + 2);
+    int i, size = (N + 2) * (N + 2 + 2*color_offset(N));
 
     for (i = 0; i < size; i++) {
         u[i] = v[i] = u_prev[i] = v_prev[i] = dens[i] = dens_prev[i] = 0.0f;
@@ -84,14 +86,14 @@ static void clear_data(void)
 
 static int allocate_data(void)
 {
-    int size = (N + 2) * (N + 2);
+    int size = (N + 2) * (N + 2 + 2*color_offset(N));
 
-    u = (float*)malloc(size * sizeof(float));
-    v = (float*)malloc(size * sizeof(float));
-    u_prev = (float*)malloc(size * sizeof(float));
-    v_prev = (float*)malloc(size * sizeof(float));
-    dens = (float*)malloc(size * sizeof(float));
-    dens_prev = (float*)malloc(size * sizeof(float));
+    u = (float*)_mm_malloc(size * sizeof(float), 32);
+    v = (float*)_mm_malloc(size * sizeof(float), 32);
+    u_prev = (float*)_mm_malloc(size * sizeof(float), 32);
+    v_prev = (float*)_mm_malloc(size * sizeof(float), 32);
+    dens = (float*)_mm_malloc(size * sizeof(float), 32);
+    dens_prev = (float*)_mm_malloc(size * sizeof(float), 32);
 
     if (!u || !v || !u_prev || !v_prev || !dens || !dens_prev) {
         fprintf(stderr, "cannot allocate data\n");
@@ -104,17 +106,19 @@ static int allocate_data(void)
 
 static void react(float* d, float* u, float* v)
 {
-    int i, size = (N + 2) * (N + 2);
+    int i, size = (N + 2) * (N + 2 + 2*color_offset(N));
     float max_velocity2 = 0.0f;
     float max_density = 0.0f;
 
     max_velocity2 = max_density = 0.0f;
-    for (i = 0; i < size; i++) {
-        if (max_velocity2 < u[i] * u[i] + v[i] * v[i]) {
-            max_velocity2 = u[i] * u[i] + v[i] * v[i];
-        }
-        if (max_density < d[i]) {
-            max_density = d[i];
+    for (unsigned int j = 0; j < N+2; j++) {
+        for (unsigned int i = 0; i < N+2; i++){
+            if (max_velocity2 < u[IX(i,j)] * u[IX(i,j)] + v[IX(i,j)] * v[IX(i,j)]) {
+                max_velocity2 = u[IX(i,j)] * u[IX(i,j)] + v[IX(i,j)] * v[IX(i,j)];
+            }
+            if (max_density < d[IX(i,j)]) {
+                max_density = d[IX(i,j)];
+            }
         }
     }
 

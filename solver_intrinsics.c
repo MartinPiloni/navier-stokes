@@ -4,7 +4,6 @@
 #include "solver.h"
 #include "indices.h"
 
-#define ALIGN32 __attribute__((aligned(32)))
 #define IX(x,y) (rb_idx((x),(y),(n+2)))
 #define SWAP(x0,x) {float * tmp=x0;x0=x;x=tmp;}
 
@@ -13,9 +12,10 @@ typedef enum { RED, BLACK } grid_color;
 
 static void add_source(unsigned int n, float* x, const float* s, float dt)
 {
-    unsigned int size = (n + 2) * (n + 2);
-    for (unsigned int i = 0; i < size; i++) {
-        x[i] += dt * s[i];
+    for (unsigned int j = 0; j < n+2; j++) {
+        for (unsigned int i = 0; i < n+2; i++){
+            x[IX(i,j)] += dt * s[IX(i,j)];
+        }
     }
 }
 
@@ -43,45 +43,128 @@ static void lin_solve_rb_step(grid_color color,
 {
     const __m256 avx_a = _mm256_set1_ps(a);
     const __m256 avx_c = _mm256_set1_ps(c);
-    int shift = color == RED ? 1 : -1;
     unsigned int start = color == RED ? 0 : 1;
-
+    
     unsigned int width = (n + 2) / 2;
-
-    for (unsigned int y = 1; y <= n; ++y, shift = -shift, start = 1 - start) {
-	unsigned int x;
-        for (x = start; x + 7 < width - (1 - start); x += 8) {
-            int index = idx(x, y, width);
-
+    
+    unsigned int coff = color_offset(n);
+    
+    for (unsigned int y = 1; y <= n; ++y, start = 1 - start) {
+        unsigned int x = 0;
+        int index = idx(x, y, width + coff);
+        __m256 weast  = _mm256_load_ps(&neigh[index]);   // west & east
+        __m256 next   = _mm256_load_ps(&neigh[index+8]); // next
+        __m256 s = _mm256_load_ps(&same[index]);
+        
+        if (start) {
             // Cargar datos
-            __m256 s0   = _mm256_loadu_ps(&same0[index]);
-            __m256 nM   = _mm256_loadu_ps(&neigh[index - width]);   
-            __m256 nC   = _mm256_loadu_ps(&neigh[index]);           
-            __m256 nE   = _mm256_loadu_ps(&neigh[index + shift]);   
-            __m256 nS   = _mm256_loadu_ps(&neigh[index + width]);   
+            __m256 s0   = _mm256_load_ps(&same0[index]);
+            __m256 north   = _mm256_load_ps(&neigh[index - (width + coff)]);   // north
+            __m256 south   = _mm256_load_ps(&neigh[index + (width + coff)]);   // south
 
             // Operaciones
-            __m256 sum = _mm256_add_ps(nM, nC);
-            sum = _mm256_add_ps(sum, nE);
-            sum = _mm256_add_ps(sum, nS);
+            __m256i perm_idx = _mm256_set_epi32(6, 5, 4, 3, 2, 1, 0, 7);
+            __m256 aux = _mm256_permutevar8x32_ps(weast, perm_idx);
+            __m256 sum = _mm256_add_ps(weast, aux);
+            sum = _mm256_add_ps(sum, north);
+            sum = _mm256_add_ps(sum, south);
+            sum = _mm256_mul_ps(sum, avx_a);
+            sum = _mm256_add_ps(sum, s0);
+            sum = _mm256_div_ps(sum, avx_c);
+            sum = _mm256_blend_ps(sum, s, 1);  // border case
+
+            // Guardar resultado
+            _mm256_store_ps(&same[index], sum);
+        }
+
+        for (x = start*8; x+7 < width - (1 - start); x += 8) {
+            index = idx(x, y, width + coff);
+            
+            __m256 s0   = _mm256_load_ps(&same0[index]);
+            __m256 north   = _mm256_load_ps(&neigh[index - (width + coff)]);   // north
+            __m256 south   = _mm256_load_ps(&neigh[index + (width + coff)]);   // south
+            
+            __m256 aux = _mm256_undefined_ps();
+            if (start) {
+                aux  = _mm256_blend_ps(next, weast, 1<<7);
+                __m256i perm_idx = _mm256_set_epi32(6, 5, 4, 3, 2, 1, 0, 7);
+                aux = _mm256_permutevar8x32_ps(aux, perm_idx);
+                weast   = next;
+                next = _mm256_load_ps(&neigh[index+8]); // next
+            } else {
+                weast   = next;
+                next = _mm256_load_ps(&neigh[index+8]); // next
+                aux  = _mm256_blend_ps(weast, next, 1);
+                __m256i perm_idx = _mm256_set_epi32(0, 7, 6, 5, 4, 3, 2, 1);
+                aux = _mm256_permutevar8x32_ps(aux, perm_idx);
+            }
+
+            __m256 sum = _mm256_add_ps(weast, aux);
+            sum = _mm256_add_ps(sum, north);
+            sum = _mm256_add_ps(sum, south);
             sum = _mm256_mul_ps(sum, avx_a);
             sum = _mm256_add_ps(sum, s0);
             sum = _mm256_div_ps(sum, avx_c);
 
             // Guardar resultado
-            _mm256_storeu_ps(&same[index], sum);
+            _mm256_store_ps(&same[index], sum);
         }
 
-	if ((width - 1) % 8 == 0) continue;
+        if (x < width - (1-start)){
+            index = idx(x, y, width + coff);
+                
+            __m256 s0   = _mm256_load_ps(&same0[index]);
+            __m256 north   = _mm256_load_ps(&neigh[index - (width + coff)]);   // north
+            __m256 south   = _mm256_load_ps(&neigh[index + (width + coff)]);   // south
+            
+            __m256 aux = _mm256_undefined_ps();
+            if (start) {
+                aux  = _mm256_blend_ps(next, weast, 1<<7);
+                __m256i perm_idx = _mm256_set_epi32(6, 5, 4, 3, 2, 1, 0, 7);
+                aux = _mm256_permutevar8x32_ps(aux, perm_idx);
+                weast   = next;
+                next = _mm256_load_ps(&neigh[index+8]); // next
+            } else {
+                weast   = next;
+                next = _mm256_load_ps(&neigh[index+8]); // next
+                aux  = _mm256_blend_ps(weast, next, 1);
+                __m256i perm_idx = _mm256_set_epi32(0, 7, 6, 5, 4, 3, 2, 1);
+                aux = _mm256_permutevar8x32_ps(aux, perm_idx);
+            }
 
-	while (x < width - (1 - start)) {
-        int index = idx(x, y, width);
-	    same[index] = (same0[index] + a * (neigh[index + width] +
-				               neigh[index] +
-					       neigh[index + shift] +
-					       neigh[index + width])) / c;
-	    x++;
-	}
+            __m256 sum = _mm256_add_ps(weast, aux);
+            sum = _mm256_add_ps(sum, north);
+            sum = _mm256_add_ps(sum, south);
+            sum = _mm256_mul_ps(sum, avx_a);
+            sum = _mm256_add_ps(sum, s0);
+            sum = _mm256_div_ps(sum, avx_c);
+            switch (width-(1-start)-x){
+                case 1:
+                    sum = _mm256_blend_ps(s, sum, (1<<1)-1);
+                    break;
+                case 2:
+                    sum = _mm256_blend_ps(s, sum, (1<<2)-1);
+                    break;
+                case 3:
+                    sum = _mm256_blend_ps(s, sum, (1<<3)-1);
+                    break;
+                case 4:
+                    sum = _mm256_blend_ps(s, sum, (1<<4)-1);
+                    break;
+                case 5:
+                    sum = _mm256_blend_ps(s, sum, (1<<5)-1);
+                    break;
+                case 6:
+                    sum = _mm256_blend_ps(s, sum, (1<<6)-1);
+                    break;
+                case 7:
+                    sum = _mm256_blend_ps(s, sum, (1<<7)-1);
+                    break;
+            }
+
+            // Guardar resultado
+            _mm256_store_ps(&same[index], sum);
+        }
     }
 }
 
@@ -90,7 +173,7 @@ static void lin_solve(unsigned int n, boundary b,
                       const float * restrict x0,
                       float a, float c)
 {
-    unsigned int color_size = (n + 2) * ((n + 2) / 2);
+    unsigned int color_size = (n + 2) * ((n + 2) / 2 + color_offset(n));
     const float * red0 = x0;
     const float * blk0 = x0 + color_size;
     float * red = x;
