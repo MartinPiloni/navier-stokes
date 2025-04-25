@@ -12,10 +12,12 @@ typedef enum { RED, BLACK } grid_color;
 
 static void add_source(unsigned int n, float* x, const float* s, float dt)
 {
-    for (unsigned int j = 0; j < n+2; j++) {
-        for (unsigned int i = 0; i < n+2; i++){
-            x[IX(i,j)] += dt * s[IX(i,j)];
-        }
+    for (unsigned int i = 0; i < (n+2)*(n+2 + 2*color_offset(n)); i+=8) {
+        __m256 xv = _mm256_load_ps(&x[i]);
+        __m256 sv = _mm256_load_ps(&s[i]);
+        __m256 avx_dt = _mm256_set1_ps(dt);
+        xv = _mm256_fmadd_ps(avx_dt, sv, xv);
+        _mm256_store_ps(&x[i], xv);
     }
 }
 
@@ -56,28 +58,40 @@ static void lin_solve_rb_step(grid_color color,
         __m256 next   = _mm256_load_ps(&neigh[index+8]); // next
         __m256 s = _mm256_load_ps(&same[index]);
         
-        if (start) {
-            // Cargar datos
-            __m256 s0   = _mm256_load_ps(&same0[index]);
-            __m256 north   = _mm256_load_ps(&neigh[index - (width + coff)]);   // north
-            __m256 south   = _mm256_load_ps(&neigh[index + (width + coff)]);   // south
+        // Cargar datos
+        __m256 s0   = _mm256_load_ps(&same0[index]);
+        __m256 north   = _mm256_load_ps(&neigh[index - (width + coff)]);   // north
+        __m256 south   = _mm256_load_ps(&neigh[index + (width + coff)]);   // south
 
+        __m256 aux = _mm256_undefined_ps();
+        __m256 sum = _mm256_undefined_ps();
+        if (start) {
             // Operaciones
             __m256i perm_idx = _mm256_set_epi32(6, 5, 4, 3, 2, 1, 0, 7);
-            __m256 aux = _mm256_permutevar8x32_ps(weast, perm_idx);
-            __m256 sum = _mm256_add_ps(weast, aux);
+            aux = _mm256_permutevar8x32_ps(weast, perm_idx);
+            sum = _mm256_add_ps(weast, aux);
             sum = _mm256_add_ps(sum, north);
             sum = _mm256_add_ps(sum, south);
             sum = _mm256_mul_ps(sum, avx_a);
             sum = _mm256_add_ps(sum, s0);
             sum = _mm256_div_ps(sum, avx_c);
             sum = _mm256_blend_ps(sum, s, 1);  // border case
-
-            // Guardar resultado
-            _mm256_store_ps(&same[index], sum);
+        } else {
+            aux  = _mm256_blend_ps(weast, next, 1);
+            __m256i perm_idx = _mm256_set_epi32(0, 7, 6, 5, 4, 3, 2, 1);
+            aux = _mm256_permutevar8x32_ps(aux, perm_idx);
+            sum = _mm256_add_ps(weast, aux);
+            sum = _mm256_add_ps(sum, north);
+            sum = _mm256_add_ps(sum, south);
+            sum = _mm256_mul_ps(sum, avx_a);
+            sum = _mm256_add_ps(sum, s0);
+            sum = _mm256_div_ps(sum, avx_c);
         }
 
-        for (x = start*8; x+7 < width - (1 - start); x += 8) {
+        // Guardar resultado
+        _mm256_store_ps(&same[index], sum);
+
+        for (x = 8; x+7 < width - (1 - start); x += 8) {
             index = idx(x, y, width + coff);
             
             __m256 s0   = _mm256_load_ps(&same0[index]);
@@ -238,13 +252,146 @@ static void project(unsigned int n, float* u, float* v, float* p, float* div)
     set_bnd(n, NONE, p);
 
     lin_solve(n, NONE, p, div, 1, 4);
+    unsigned int width = (n+2)/2;
+    unsigned int coff = color_offset(n);
+    unsigned int mid = (n+2)*(width + coff);
 
-    for (unsigned int i = 1; i <= n; i++) {
-        for (unsigned int j = 1; j <= n; j++) {
-            u[IX(i, j)] -= 0.5f * n * (p[IX(i + 1, j)] - p[IX(i - 1, j)]);
-            v[IX(i, j)] -= 0.5f * n * (p[IX(i, j + 1)] - p[IX(i, j - 1)]);
+    __m256 avx_m = _mm256_set1_ps(-0.5f*n);
+
+    for (unsigned int half = 0; half <= 1; half++) {
+        unsigned int start = half;
+        for (unsigned int y = 1; y <= n; y++, start = 1 - start) {
+            unsigned int x = 0;
+            unsigned int index = idx(x, y, width + coff);
+            unsigned int index_uv = mid*half + index;
+            unsigned int index_p = mid*(1-half) + index;
+
+            __m256 curr = _mm256_load_ps(&p[index_p]);
+            __m256 next = _mm256_load_ps(&p[index_p+8]);
+            __m256 uV = _mm256_load_ps(&u[index_uv]);
+            __m256 vV = _mm256_load_ps(&v[index_uv]);
+            __m256 up = _mm256_load_ps(&p[index_p - (width + coff)]);
+            __m256 down = _mm256_load_ps(&p[index_p + (width + coff)]);
+
+            __m256 aux  = _mm256_undefined_ps();
+            __m256 su   = _mm256_undefined_ps();
+            __m256 sv = _mm256_sub_ps(down, up);
+            sv = _mm256_fmadd_ps(avx_m, sv, vV);
+            if (start) {
+                __m256i perm_idx = _mm256_set_epi32(6, 5, 4, 3, 2, 1, 0, 7);
+                aux = _mm256_permutevar8x32_ps(curr, perm_idx);
+                su = _mm256_sub_ps(curr, aux);
+                su = _mm256_fmadd_ps(avx_m, su, uV);
+                su = _mm256_blend_ps(su, uV, 1);
+                sv = _mm256_blend_ps(sv, vV, 1);
+            } else {
+                aux  = _mm256_blend_ps(curr, next, 1);
+                __m256i perm_idx = _mm256_set_epi32(0, 7, 6, 5, 4, 3, 2, 1);
+                aux = _mm256_permutevar8x32_ps(aux, perm_idx);
+                su = _mm256_sub_ps(aux, curr);
+                su = _mm256_fmadd_ps(avx_m, su, uV);
+            }
+
+            _mm256_store_ps(&u[index_uv], su);
+            _mm256_store_ps(&v[index_uv], sv);
+
+            for (x = 8; x+7 < width - (1 - start); x+=8) {
+                index = idx(x, y, width + coff);
+                index_uv = mid*half + index;
+                index_p = mid*(1-half) + index;
+
+                __m256 uV   = _mm256_load_ps(&u[index_uv]);
+                __m256 vV   = _mm256_load_ps(&v[index_uv]);
+                __m256 up   = _mm256_load_ps(&p[index_p - (width + coff)]);
+                __m256 down = _mm256_load_ps(&p[index_p + (width + coff)]);
+
+                __m256 aux  = _mm256_undefined_ps();
+                __m256 su   = _mm256_undefined_ps();
+                if (start) {
+                    aux  = _mm256_blend_ps(next, curr, 1<<7);
+                    __m256i perm_idx = _mm256_set_epi32(6, 5, 4, 3, 2, 1, 0, 7);
+                    aux = _mm256_permutevar8x32_ps(aux, perm_idx);
+                    curr = next;
+                    next = _mm256_load_ps(&p[index_p+8]); // next
+                    su = _mm256_sub_ps(curr, aux);
+                } else {
+                    curr = next;
+                    next = _mm256_load_ps(&p[index_p+8]); // next
+                    aux  = _mm256_blend_ps(curr, next, 1);
+                    __m256i perm_idx = _mm256_set_epi32(0, 7, 6, 5, 4, 3, 2, 1);
+                    aux = _mm256_permutevar8x32_ps(aux, perm_idx);
+                    su = _mm256_sub_ps(aux, curr);
+                }
+                su = _mm256_fmadd_ps(avx_m, su, uV);
+                
+                __m256 sv = _mm256_sub_ps(down, up);
+                sv = _mm256_fmadd_ps(avx_m, sv, vV);
+
+                _mm256_store_ps(&u[index_uv], su);
+                _mm256_store_ps(&v[index_uv], sv);
+            }
+
+            if (x < width - (1-start)){
+                index = idx(x, y, width + coff);
+                unsigned int index_uv = mid*half + index;
+                unsigned int index_p = mid*(1-half) + index;
+                    
+                __m256 uV = _mm256_load_ps(&u[index_uv]);
+                __m256 vV = _mm256_load_ps(&v[index_uv]);
+                __m256 up = _mm256_load_ps(&p[index_p - (width+coff)]);
+                __m256 down = _mm256_load_ps(&p[index_p + (width+coff)]);
+                
+                __m256 aux = _mm256_undefined_ps();
+                __m256 su = _mm256_undefined_ps();
+                if (start) {
+                    aux  = _mm256_blend_ps(next, curr, 1<<7);
+                    __m256i perm_idx = _mm256_set_epi32(6, 5, 4, 3, 2, 1, 0, 7);
+                    aux = _mm256_permutevar8x32_ps(aux, perm_idx);
+                    curr = next;
+                    next = _mm256_load_ps(&p[index_p+8]); // next
+                    su = _mm256_sub_ps(curr, aux);
+                } else {
+                    curr = next;
+                    next = _mm256_load_ps(&p[index_p+8]); // next
+                    aux  = _mm256_blend_ps(curr, next, 1);
+                    __m256i perm_idx = _mm256_set_epi32(0, 7, 6, 5, 4, 3, 2, 1);
+                    aux = _mm256_permutevar8x32_ps(aux, perm_idx);
+                    su = _mm256_sub_ps(aux, curr);
+                }
+                su = _mm256_fmadd_ps(avx_m, su, uV);
+                
+                __m256 sv = _mm256_sub_ps(down, up);
+                sv = _mm256_fmadd_ps(avx_m, sv, vV);
+                switch (width-(1-start)-x){
+                    case 1:
+                        su = _mm256_blend_ps(uV, su, (1<<1)-1);
+                        break;
+                    case 2:
+                        su = _mm256_blend_ps(uV, su, (1<<2)-1);
+                        break;
+                    case 3:
+                        su = _mm256_blend_ps(uV, su, (1<<3)-1);
+                        break;
+                    case 4:
+                        su = _mm256_blend_ps(uV, su, (1<<4)-1);
+                        break;
+                    case 5:
+                        su = _mm256_blend_ps(uV, su, (1<<5)-1);
+                        break;
+                    case 6:
+                        su = _mm256_blend_ps(uV, su, (1<<6)-1);
+                        break;
+                    case 7:
+                        su = _mm256_blend_ps(uV, su, (1<<7)-1);
+                        break;
+                }
+
+                _mm256_store_ps(&u[index_uv], su);
+                _mm256_store_ps(&v[index_uv], sv);
+            }
         }
     }
+    
     set_bnd(n, VERTICAL, u);
     set_bnd(n, HORIZONTAL, v);
 }
