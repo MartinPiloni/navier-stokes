@@ -195,8 +195,8 @@ static void react(float* d, float* u, float* v)
     float max_density = 0.0f;
 
     max_velocity2 = max_density = 0.0f;
-    for (unsigned int j = 0; j < N+2; j++) {
-        for (unsigned int i = 0; i < N+2; i++){
+    for (int j = 0; j < N+2; j++) {
+        for (int i = 0; i < N+2; i++){
             if (max_velocity2 < u[IX(i,j)] * u[IX(i,j)] + v[IX(i,j)] * v[IX(i,j)]) {
                 max_velocity2 = u[IX(i,j)] * u[IX(i,j)] + v[IX(i,j)] * v[IX(i,j)];
             }
