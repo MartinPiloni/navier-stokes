@@ -1,5 +1,5 @@
-CC=gcc
-CFLAGS=-std=c11 -Wall -Wextra -Wno-unused-parameter
+CC=clang
+CFLAGS=-std=c11 -Wall -Wextra -Wno-unused-parameter -O3 -ffast-math -ftree-vectorize -march=native -DGRID_SIZE=512
 LDFLAGS=
 
 TARGETS=demo headless
