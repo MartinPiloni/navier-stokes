@@ -45,7 +45,7 @@ static void lin_solve_rb_step(grid_color color,
 {
     
     unsigned int y = 1;
-    #pragma omp parallel for private(y) shared(color, n, a, c, same0, neigh, same)
+    #pragma omp parallel for private(y)
     for (y = 1; y <= n; ++y) {
         const __m256 avx_a = _mm256_set1_ps(a);
         const __m256 avx_c = _mm256_set1_ps(c);
@@ -53,7 +53,7 @@ static void lin_solve_rb_step(grid_color color,
         unsigned int width = (n + 2) / 2;
         
         unsigned int coff = color_offset(n);
-        unsigned int start = ((color == RED ? 0 : 1) + y)%2;
+        unsigned int start = ((color == RED ? 0 : 1)+y+1)%2;
         unsigned int x = 0;
         int index = idx(x, y, width + coff);
         __m256 weast  = _mm256_load_ps(&neigh[index]);   // west & east
@@ -210,22 +210,22 @@ static void diffuse(unsigned int n, boundary b, float* x, const float* x0, float
 
 static void advect(unsigned int n, boundary b, float* d, const float* d0, const float* u, const float* v, float dt)
 {
-    __m256i i0, i1, j0, j1;
-    __m256 xV, yV, s0, t0, s1, t1;
-
-    __m256 dt0 = _mm256_set1_ps((-dt)*n);
-    __m256 c1 = _mm256_set1_ps(0.5f);
-    __m256 c2 = _mm256_set1_ps(n+0.5f);
-    __m256i one = _mm256_set1_epi32(1);
-    __m256 one_ps = _mm256_set1_ps(1.0f);
-
-    unsigned int width = (n+2)/2;
-    unsigned int coff = color_offset(n);
-    unsigned int mid = (n+2)*(width + coff);
-
     for (unsigned int half = 0; half <= 1; half++) {
-        unsigned int start = half;
-        for (unsigned int y = 1; y <= n; y++, start = 1 - start) {
+        unsigned int y = 1;
+        #pragma omp parallel for private(y)
+        for (y = 1; y <= n; y++) {
+            unsigned int start = (half+y+1)%2;
+            unsigned int width = (n+2)/2;
+            unsigned int coff = color_offset(n);
+            unsigned int mid = (n+2)*(width + coff);
+            __m256i i0, i1, j0, j1;
+            __m256 xV, yV, s0, t0, s1, t1;
+
+            __m256 dt0 = _mm256_set1_ps((-dt)*n);
+            __m256 c1 = _mm256_set1_ps(0.5f);
+            __m256 c2 = _mm256_set1_ps(n+0.5f);
+            __m256i one = _mm256_set1_epi32(1);
+            __m256 one_ps = _mm256_set1_ps(1.0f);
             unsigned int x = 0;
             unsigned int index = mid*half + idx(x, y, width + coff);
 
@@ -391,14 +391,15 @@ static void advect(unsigned int n, boundary b, float* d, const float* d0, const 
 
 static void project(unsigned int n, float* u, float* v, float* p, float* div)
 {
-    unsigned int width = (n+2)/2;
-    unsigned int coff = color_offset(n);
-    unsigned int mid = (n+2)*(width + coff);
-
-    __m256 avx_d = _mm256_set1_ps(-2.0f*n);
     for (unsigned int half = 0; half <= 1; half++) {
-        unsigned int start = half;
-        for (unsigned int y = 1; y <= n; y++, start = 1 - start) {
+        unsigned int y = 1;
+        #pragma omp parallel for private(y)
+        for (y = 1; y <= n; y++) {
+            unsigned int start = (half+y+1)%2;
+            __m256 avx_d = _mm256_set1_ps(-2.0f*n);
+            unsigned int width = (n+2)/2;
+            unsigned int coff = color_offset(n);
+            unsigned int mid = (n+2)*(width + coff);
             unsigned int x = 0;
             unsigned int index = idx(x, y, width + coff);
             unsigned int index_div = mid*half + index;
@@ -540,8 +541,13 @@ static void project(unsigned int n, float* u, float* v, float* p, float* div)
 
     __m256 avx_m = _mm256_set1_ps(-0.5f*n);
     for (unsigned int half = 0; half <= 1; half++) {
-        unsigned int start = half;
-        for (unsigned int y = 1; y <= n; y++, start = 1 - start) {
+        unsigned int y = 1;
+        #pragma omp parallel for private(y)
+        for (y = 1; y <= n; y++) {
+            unsigned int start = (half+y+1)%2;
+            unsigned int width = (n+2)/2;
+            unsigned int coff = color_offset(n);
+            unsigned int mid = (n+2)*(width + coff);
             unsigned int x = 0;
             unsigned int index = idx(x, y, width + coff);
             unsigned int index_uv = mid*half + index;
