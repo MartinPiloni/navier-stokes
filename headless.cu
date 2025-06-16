@@ -41,7 +41,9 @@ static float force, source;
 static float max_cells_per_ms;
 
 static float *u, *v, *u_prev, *v_prev;
+static float *d_u, *d_v, *d_u_prev, *d_v_prev;
 static float *dens, *dens_prev;
+static float *d_dens, *d_dens_prev;
 
 
 /*
@@ -71,6 +73,24 @@ static void free_data(void)
     if (dens_prev) {
         free(dens_prev);
     }
+    if (d_u) {
+        cudaFree(d_u);
+    }
+    if (d_v) {
+        cudaFree(d_v);
+    }
+    if (d_u_prev) {
+        cudaFree(d_u_prev);
+    }
+    if (d_v_prev) {
+        cudaFree(d_v_prev);
+    }
+    if (d_dens) {
+        cudaFree(d_dens);
+    }
+    if (d_dens_prev) {
+        cudaFree(d_dens_prev);
+    }
 }
 
 static void clear_data(void)
@@ -96,6 +116,37 @@ static int allocate_data(void)
     if (!u || !v || !u_prev || !v_prev || !dens || !dens_prev) {
         fprintf(stderr, "cannot allocate data\n");
         return (0);
+    }
+
+    cudaError_t err = cudaMalloc((void **)&d_u, size * sizeof(float));
+    if (err != cudaSuccess) {
+        fprintf(stderr, "cudaMalloc failed: %s\n", cudaGetErrorString(err));
+        return 0;
+    }
+    err = cudaMalloc((void **)&d_v, size * sizeof(float));
+    if (err != cudaSuccess) {
+        fprintf(stderr, "cudaMalloc failed: %s\n", cudaGetErrorString(err));
+        return 0;
+    }
+    err = cudaMalloc((void **)&d_u_prev, size * sizeof(float));
+    if (err != cudaSuccess) {
+        fprintf(stderr, "cudaMalloc failed: %s\n", cudaGetErrorString(err));
+        return 0;
+    }
+    err = cudaMalloc((void **)&d_v_prev, size * sizeof(float));
+    if (err != cudaSuccess) {
+        fprintf(stderr, "cudaMalloc failed: %s\n", cudaGetErrorString(err));
+        return 0;
+    }
+    err = cudaMalloc((void **)&d_dens, size * sizeof(float));
+    if (err != cudaSuccess) {
+        fprintf(stderr, "cudaMalloc failed: %s\n", cudaGetErrorString(err));
+        return 0;
+    }
+    err = cudaMalloc((void **)&d_dens_prev, size * sizeof(float));
+    if (err != cudaSuccess) {
+        fprintf(stderr, "cudaMalloc failed: %s\n", cudaGetErrorString(err));
+        return 0;
     }
 
     return (1);
@@ -147,11 +198,11 @@ static void one_step(void)
     react_ms_p_cell += 1.0e3 * (wtime() - start_t) / (N * N);
 
     start_t = wtime();
-    vel_step(N, u, v, u_prev, v_prev, visc, dt);
+    vel_step(N, u, d_u, v, d_v, u_prev, d_u_prev, v_prev, d_v_prev, visc, dt);
     vel_ms_p_cell += 1.0e3 * (wtime() - start_t) / (N * N);
 
     start_t = wtime();
-    dens_step(N, dens, dens_prev, u, v, diff, dt);
+    dens_step(N, dens, d_dens, dens_prev, d_dens_prev, u, v, diff, dt);
     dens_ms_p_cell += 1.0e3 * (wtime() - start_t) / (N * N);
 
     if (1.0 < wtime() - one_second) { /* at least 1s between stats */
