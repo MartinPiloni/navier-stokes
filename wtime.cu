@@ -1,6 +1,5 @@
 #include "wtime.h"
 
-#define _POSIX_C_SOURCE 199309L
 #include <time.h>
 
 double wtime(void)

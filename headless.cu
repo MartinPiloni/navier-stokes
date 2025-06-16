@@ -18,6 +18,7 @@
 #include <stdlib.h>
 
 #include "indices.h"
+#include "solver.h"
 #include "wtime.h"
 
 /* macros */
@@ -29,9 +30,8 @@
 #define IX(x,y) (rb_idx((x),(y),(N+2)))
 
 /* external definitions (from solver.c) */
-
-extern void dens_step(int N, float* x, float* x0, float* u, float* v, float diff, float dt);
-extern void vel_step(int N, float* u, float* v, float* u0, float* v0, float visc, float dt);
+//extern void dens_step(int N, float* x, float* x0, float* u, float* v, float diff, float dt);
+//extern void vel_step(int N, float* u, float* v, float* u0, float* v0, float visc, float dt);
 
 /* global variables */
 
@@ -131,11 +131,6 @@ static void react(float* d, float* u, float* v)
     }
 
     return;
-}
-
-static double max(double a, double b) {
-    if (a > b) return a;
-    else return b;
 }
 
 static void one_step(void)

@@ -1,13 +1,13 @@
 import json
 import subprocess
 
-def benchmark_headless(compilers = ["gcc"], flags=["-O0"], grid_size = [128]):
+def benchmark_headless(compilers = ["nvcc"], flags=["-O0"], grid_size = [128]):
     with open("data.json", "w") as file:
         data = []
         for size in grid_size:
             for compiler in compilers:
                 for flag in flags:
-                    cmd = ["make", f"CC={compiler}", f"CFLAGS={flag} -DGRID_SIZE={size}"]
+                    cmd = ["make", f"NVCC={compiler}", f"NVFLAGS={flag} -DGRID_SIZE={size}"]
                     subprocess.run(cmd)
 
                     run = ["./headless"]
@@ -23,7 +23,7 @@ def benchmark_headless(compilers = ["gcc"], flags=["-O0"], grid_size = [128]):
                     subprocess.run(clean)
         json.dump(data, file, indent=1)
 
-compilers = ["gcc", "clang"]
-flags = ["-O3 -ffast-math -march=native -ftree-vectorize"]
-grid_size = [128]
+compilers = ["nvcc"]
+flags = ['-O3 -Xcompiler "-Wall -Wextra -Wno-unused-parameter -O3 -ffast-math -march=native -ftree-vectorize"']
+grid_size = [128, 256]
 benchmark_headless(compilers, flags, grid_size)

@@ -35,9 +35,9 @@ static void lin_solve_rb_step(grid_color color,
                               unsigned int n,
                               float a,
                               float c,
-                              const float * restrict same0,
-                              const float * restrict neigh,
-                              float * restrict same)
+                              const float * same0,
+                              const float * neigh,
+                              float * same)
 {
     int shift = color == RED ? 1 : -1;
     unsigned int start = color == RED ? 0 : 1;
@@ -56,8 +56,8 @@ static void lin_solve_rb_step(grid_color color,
 }
 
 static void lin_solve(unsigned int n, boundary b,
-                      float * restrict x,
-                      const float * restrict x0,
+                      float * x,
+                      const float * x0,
                       float a, float c)
 {
     unsigned int color_size = (n + 2) * ((n + 2) / 2);

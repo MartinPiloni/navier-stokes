@@ -1,24 +1,27 @@
-CC=gcc
-CFLAGS=-std=c11 -Wall -Wextra -Wno-unused-parameter -O3 -ffast-math -march=native -ftree-vectorize
+NVCC=nvcc
+NVFLAGS=-std=c++11 -O3 -Xcompiler "-Wall -Wextra -Wno-unused-parameter -O3 -ffast-math -march=native -ftree-vectorize"
 LDFLAGS=
 
 TARGETS=demo headless
-SOURCES=$(shell echo *.c)
+SOURCES=$(shell echo *.cu)
 COMMON_OBJECTS=solver.o wtime.o
 
 all: $(TARGETS)
 
 demo: demo.o $(COMMON_OBJECTS)
-	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS) -lGL -lGLU -lglut
+	$(NVCC) $(NVFLAGS) $^ -o $@ $(LDFLAGS) -lGL -lGLU -lglut
 
 headless: headless.o $(COMMON_OBJECTS)
-	$(CC) $(CFLAGS) $^ -o $@ $(LDFLAGS)
+	$(NVCC) $(NVFLAGS) $^ -o $@ $(LDFLAGS)
+
+%.o: %.cu
+	$(NVCC) $(NVFLAGS) -c $< -o $@
 
 clean:
 	rm -f $(TARGETS) *.o .depend *~
 
 .depend: *.[ch]
-	$(CC) -MM $(SOURCES) >.depend
+	$(NVCC) -MM $(SOURCES) >.depend
 
 -include .depend
 
