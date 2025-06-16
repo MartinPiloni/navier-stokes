@@ -41,14 +41,11 @@ __global__ void lin_solve_rb_step_kernel(grid_color color,
 {
     unsigned int width = (n + 2) / 2;
 
-    // y (1, n)
-    // x (0, (n + 2) / 2)
-
     // Indice de bloque -> (0, sz(bloque) - 1)
     // Block dim -> sz(bloque)
     // Thread Idx -> (0, (n + 2) / 2)
     unsigned int x = threadIdx.x;
-    unsigned int y = ((blockIdx.x * blockDim.x) % (n + 2)) + 1; // y va de 1 a n
+    unsigned int y = blockIdx.x + 1; // y va de 1 a n
 
     // 256 x 256  -> (0 - 255) - (256 - 511) - (512
 
@@ -86,11 +83,12 @@ void lin_solve(unsigned int n, boundary b,
 
     unsigned int color_size = (n + 2) * ((n + 2) / 2);
 
-    cudaMemcpy(d_x0, x0, n, cudaMemcpyHostToDevice);
+    unsigned int grid_size = (n + 2) * (n + 2) * sizeof(float);
+    cudaMemcpy(d_x0, x0, grid_size, cudaMemcpyHostToDevice);
     float* red0 = d_x0;
     float* blk0 = d_x0 + color_size;
 
-    cudaMemcpy(d_x, x, n, cudaMemcpyHostToDevice);
+    cudaMemcpy(d_x, x, grid_size, cudaMemcpyHostToDevice);
     float* red  = d_x;
     float* blk  = d_x + color_size;
     for (unsigned int k = 0; k < 20; ++k) {
@@ -101,9 +99,9 @@ void lin_solve(unsigned int n, boundary b,
         lin_solve_rb_step_kernel<<<numBlocks, threadsPerBlock>>>(BLACK, n, a, c, blk0, red, blk);
         cudaDeviceSynchronize();
 
+        cudaMemcpy(x, d_x, grid_size, cudaMemcpyDeviceToHost);
         set_bnd(n, b, x); 
     }
-    cudaMemcpy(x, d_x, n, cudaMemcpyDeviceToHost);
 }
 
 static void diffuse(unsigned int n, boundary b, float* x, float* d_x, const float* x0, float* d_x0, float diff, float dt)
