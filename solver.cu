@@ -62,14 +62,8 @@ __global__ void lin_solve_rb_step_kernel(grid_color color,
                                          float* same)
 {
     unsigned int width = (n + 2) / 2;
-
-    // Indice de bloque -> (0, sz(bloque) - 1)
-    // Block dim -> sz(bloque)
-    // Thread Idx -> (0, (n + 2) / 2)
     unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
     unsigned int y = blockIdx.y * blockDim.y + threadIdx.y + 1;
-
-    // 256 x 256  -> (0 - 255) - (256 - 511) - (512
 
     // shift
     // red, y impar -> 1
