@@ -26,7 +26,6 @@ void add_source(unsigned int n, float* x, float* s, float dt)
     size_t threads_per_block = 256; 
     size_t blocks = (size + threads_per_block - 1) / threads_per_block;
     add_source_kernel<<<blocks, threads_per_block>>>(n, x, s, dt);
-    cudaDeviceSynchronize();
 }
 
 __global__ void set_bnd_kernel(unsigned int n, boundary b, float * x)
@@ -52,7 +51,6 @@ static void set_bnd(unsigned int n, boundary b, float * x)
     size_t threads_per_block = 256;
     size_t blocks = (n + threads_per_block - 1) / threads_per_block;
     set_bnd_kernel<<<blocks, threads_per_block>>>(n, b, x);
-    cudaDeviceSynchronize();
 }
 
 __global__ void lin_solve_rb_step_kernel(grid_color color,
@@ -117,7 +115,8 @@ void lin_solve(unsigned int n, boundary b,
         lin_solve_rb_step_kernel<<<numBlocks, threadsPerBlock>>>(BLACK, n, a, c, blk0, red, blk);
         cudaDeviceSynchronize();
 
-        set_bnd(n, b, x); 
+        set_bnd(n, b, x);
+        cudaDeviceSynchronize();	
     }
 }
 
@@ -167,6 +166,7 @@ void advect(unsigned int n, boundary b, float* d, float* d0, float* u, float* v,
     advect_kernel<<<blocks, threads_per_block>>>(n, b, d, d0, u, v, dt);
     cudaDeviceSynchronize();
     set_bnd(n, b, d);
+    cudaDeviceSynchronize();
 }
 
 __global__ void project_step1_kernel(unsigned int n, float* u, float* v, float* p, float* div) {
@@ -208,12 +208,14 @@ static void project(unsigned int n, float* u, float* v, float* p, float* div)
     cudaDeviceSynchronize();
 
     set_bnd(n, VERTICAL, u);
-    set_bnd(n, HORIZONTAL, u);
+    set_bnd(n, HORIZONTAL, v);
+    cudaDeviceSynchronize();
 }
 
 void dens_step(unsigned int n, float* x, float* x0, float* u, float* v, float diff, float dt)
 {
     add_source(n, x, x0, dt);
+    cudaDeviceSynchronize();
     SWAP(x0, x)
     diffuse(n, NONE, x, x0, diff, dt);
     SWAP(x0, x);
@@ -224,6 +226,7 @@ void vel_step(unsigned int n, float* u, float* v, float* u0, float* v0, float vi
 {
     add_source(n, u, u0, dt);
     add_source(n, v, v0, dt);
+    cudaDeviceSynchronize();
     SWAP(u0, u);
     diffuse(n, VERTICAL, u, u0, visc, dt);
     SWAP(v0, v);
