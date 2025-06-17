@@ -263,7 +263,6 @@ int main(int argc, char** argv)
     clear_data();
     float start_time = wtime();
 
-    printf("llegue aca\n");
     for (i = 0; i < 2048; i++) {
         one_step();
     }
