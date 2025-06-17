@@ -26,6 +26,7 @@ void add_source(unsigned int n, float* x, float* s, float dt)
     size_t threads_per_block = 256; 
     size_t blocks = (size + threads_per_block - 1) / threads_per_block;
     add_source_kernel<<<blocks, threads_per_block>>>(n, x, s, dt);
+    cudaDeviceSynchronize();
 }
 
 __global__ void set_bnd_kernel(unsigned int n, boundary b, float * x)
@@ -86,7 +87,7 @@ __global__ void lin_solve_rb_step_kernel(grid_color color,
     // negro, y par -> 0
     int start = (color == RED) ^ (y & 1);
 
-    if (y >= n) return;
+    if (y > n) return;
     if (x < start || x >= width - (1 - start)) {
         return;
     }
@@ -102,7 +103,7 @@ void lin_solve(unsigned int n, boundary b,
                     float a, float c)
 {
     dim3 threadsPerBlock(16, 16);
-    dim3 numBlocks((n + threadsPerBlock.x + 1 )/ threadsPerBlock.x, (n + threadsPerBlock.y + 1) / threadsPerBlock.y);
+    dim3 numBlocks((n + threadsPerBlock.x - 1 )/ threadsPerBlock.x, (n + threadsPerBlock.y - 1) / threadsPerBlock.y);
 
     unsigned int color_size = (n + 2) * ((n + 2) / 2);
     float* red0 = x0;
@@ -157,14 +158,12 @@ __global__ void advect_kernel(unsigned int n, boundary b, float* d, float* d0, f
     t1 = y - j0;
     t0 = 1 - t1;
     d[IX(i, j)] = s0 * (t0 * d0[IX(i0, j0)] + t1 * d0[IX(i0, j1)]) + s1 * (t0 * d0[IX(i1, j0)] + t1 * d0[IX(i1, j1)]);
-
-    if (blockIdx.x + blockIdx.y + threadIdx.x + threadIdx.y > 0) return;
 }
 
 
 void advect(unsigned int n, boundary b, float* d, float* d0, float* u, float* v, float dt) {
-    size_t threads_per_block = 256;
-    size_t blocks = (n + threads_per_block - 1) / threads_per_block;
+    dim3 threads_per_block(16,16);
+    dim3 blocks((n + threads_per_block.x - 1) / threads_per_block.x, (n + threads_per_block.y) / threads_per_block.y);
     advect_kernel<<<blocks, threads_per_block>>>(n, b, d, d0, u, v, dt);
     cudaDeviceSynchronize();
     set_bnd(n, b, d);
@@ -210,7 +209,6 @@ static void project(unsigned int n, float* u, float* v, float* p, float* div)
 
     set_bnd(n, VERTICAL, u);
     set_bnd(n, HORIZONTAL, u);
-    cudaDeviceSynchronize();
 }
 
 void dens_step(unsigned int n, float* x, float* x0, float* u, float* v, float diff, float dt)
