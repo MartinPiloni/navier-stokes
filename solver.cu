@@ -34,6 +34,24 @@ static void set_bnd(unsigned int n, boundary b, float * x)
     x[IX(n + 1, n + 1)] = 0.5f * (x[IX(n, n + 1)] + x[IX(n + 1, n)]);
 }
 
+__global__ void cuda_set_bnd(unsigned int n, boundary b, float * x)
+{
+    size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid > 0 && tid <= n) {
+        x[IX(0, tid)]     = b == VERTICAL ? -x[IX(1, tid)] : x[IX(1, tid)];
+        x[IX(n + 1, tid)] = b == VERTICAL ? -x[IX(n, tid)] : x[IX(n, tid)];
+        x[IX(tid, 0)]     = b == HORIZONTAL ? -x[IX(tid, 1)] : x[IX(tid, 1)];
+        x[IX(tid, n + 1)] = b == HORIZONTAL ? -x[IX(tid, n)] : x[IX(tid, n)];
+    }
+
+    __syncthreads();
+    if (blockIdx.x + threadIdx.x > 0) return;
+    x[IX(0, 0)]         = 0.5f * (x[IX(1, 0)]     + x[IX(0, 1)]);
+    x[IX(0, n + 1)]     = 0.5f * (x[IX(1, n + 1)] + x[IX(0, n)]);
+    x[IX(n + 1, 0)]     = 0.5f * (x[IX(n, 0)]     + x[IX(n + 1, 1)]);
+    x[IX(n + 1, n + 1)] = 0.5f * (x[IX(n, n + 1)] + x[IX(n + 1, n)]);
+}
+
 __global__ void lin_solve_rb_step(grid_color color,
                               unsigned int n,
                               float a,
@@ -72,12 +90,12 @@ static void lin_solve(unsigned int n, boundary b,
     cudaMalloc((void **)&blk0, color_size * sizeof(float));
     cudaMemcpy(blk0, x0+color_size, color_size * sizeof(float), cudaMemcpyHostToDevice);
 
-    float * red;
-    cudaMalloc((void **)&red, color_size * sizeof(float));
-    cudaMemcpy(red, x, color_size * sizeof(float), cudaMemcpyHostToDevice);
-    float * blk;
-    cudaMalloc((void **)&blk, color_size * sizeof(float));
-    cudaMemcpy(blk, x+color_size, color_size * sizeof(float), cudaMemcpyHostToDevice);
+    float * x_dev;
+    cudaMalloc((void **)&x_dev, (n+2)*(n+2) * sizeof(float));
+    cudaMemcpy(x_dev, x, (n+2)*(n+2) * sizeof(float), cudaMemcpyHostToDevice);
+
+    float * red = x_dev;
+    float * blk = x_dev + color_size;
 
     dim3 threadsPerBlock(16,16);
     dim3 numBlocks((n+threadsPerBlock.x+1)/threadsPerBlock.x, (n+threadsPerBlock.y+1)/threadsPerBlock.y);
@@ -87,17 +105,15 @@ static void lin_solve(unsigned int n, boundary b,
 	cudaDeviceSynchronize();
         lin_solve_rb_step<<<numBlocks, threadsPerBlock>>>(BLACK, n, a, c, blk0, red, blk);
 	cudaDeviceSynchronize();
-        cudaMemcpy(x, red, color_size * sizeof(float), cudaMemcpyDeviceToHost);
-        cudaMemcpy(x+color_size, blk, color_size * sizeof(float), cudaMemcpyDeviceToHost);
-	set_bnd(n, b, x);
-        cudaMemcpy(red, x, color_size * sizeof(float), cudaMemcpyHostToDevice);
-        cudaMemcpy(blk, x+color_size, color_size * sizeof(float), cudaMemcpyHostToDevice);
+	cuda_set_bnd<<<((n+255)/256), 256>>>(n, b, x_dev);
+	cudaDeviceSynchronize();
     }
+
+    cudaMemcpy(x, x_dev, (n+2)*(n+2) * sizeof(float), cudaMemcpyDeviceToHost);
 
     cudaFree(red0);
     cudaFree(blk0);
-    cudaFree(red);
-    cudaFree(blk);
+    cudaFree(x_dev);
 }
 
 static void diffuse(unsigned int n, boundary b, float* x, const float* x0, float diff, float dt)
