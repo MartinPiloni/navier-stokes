@@ -36,8 +36,8 @@ static void set_bnd(unsigned int n, boundary b, float * x)
 
 __global__ void cuda_set_bnd(unsigned int n, boundary b, float * x)
 {
-    size_t tid = blockIdx.x * blockDim.x + threadIdx.x;
-    if (tid > 0 && tid <= n) {
+    size_t tid = blockIdx.x * blockDim.x + threadIdx.x + 1;
+    if (tid <= n) {
         x[IX(0, tid)]     = b == VERTICAL ? -x[IX(1, tid)] : x[IX(1, tid)];
         x[IX(n + 1, tid)] = b == VERTICAL ? -x[IX(n, tid)] : x[IX(n, tid)];
         x[IX(tid, 0)]     = b == HORIZONTAL ? -x[IX(tid, 1)] : x[IX(tid, 1)];
