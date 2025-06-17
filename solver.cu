@@ -44,8 +44,8 @@ __global__ void lin_solve_rb_step_kernel(grid_color color,
     // Indice de bloque -> (0, sz(bloque) - 1)
     // Block dim -> sz(bloque)
     // Thread Idx -> (0, (n + 2) / 2)
-    unsigned int x = threadIdx.x;
-    unsigned int y = blockIdx.x + 1; // y va de 1 a n
+    unsigned int x = blockIdx.x * blockDim.x + threadIdx.x;
+    unsigned int y = blockIdx.y * blockDim.y + threadIdx.y + 1;
 
     // 256 x 256  -> (0 - 255) - (256 - 511) - (512
 
@@ -63,6 +63,7 @@ __global__ void lin_solve_rb_step_kernel(grid_color color,
     // negro, y par -> 0
     int start = (color == RED) ^ (y & 1);
 
+    if (y >= n) return;
     if (x < start || x >= width - (1 - start)) {
         return;
     }
@@ -78,8 +79,8 @@ void lin_solve(unsigned int n, boundary b,
                     float* d_x0, float a, float c)
 {
     // numBlock * threadPerBlock = celdas del color
-    unsigned int threadsPerBlock = (n + 2) / 2;
-    unsigned int numBlocks = n + 2;
+    dim3 threadsPerBlock(16, 16);
+    dim3 numBlocks((n+threadsPerBlock.x+1)/threadsPerBlock.x, (n+threadsPerBlock.y+1)/threadsPerBlock.y);
 
     unsigned int color_size = (n + 2) * ((n + 2) / 2);
 
