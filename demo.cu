@@ -33,9 +33,9 @@ static float dt, diff, visc;
 static float force, source;
 static int dvel;
 
-static float *u, *v, *u_prev, *v_prev;
+static float *h_u, *h_v, *h_u_prev, *h_v_prev;
 static float *d_u, *d_v, *d_u_prev, *d_v_prev;
-static float *dens, *dens_prev;
+static float *h_dens, *h_dens_prev;
 static float *d_dens, *d_dens_prev;
 
 static int win_id;
@@ -52,42 +52,18 @@ static int omx, omy, mx, my;
 
 static void free_data(void)
 {
-    if (u) {
-        free(u);
-    }
-    if (v) {
-        free(v);
-    }
-    if (u_prev) {
-        free(u_prev);
-    }
-    if (v_prev) {
-        free(v_prev);
-    }
-    if (dens) {
-        free(dens);
-    }
-    if (dens_prev) {
-        free(dens_prev);
-    }
-    if (d_u) {
-        cudaFree(d_u);
-    }
-    if (d_v) {
-        cudaFree(d_v);
-    }
-    if (d_u_prev) {
-        cudaFree(d_u_prev);
-    }
-    if (d_v_prev) {
-        cudaFree(d_v_prev);
-    }
-    if (d_dens) {
-        cudaFree(d_dens);
-    }
-    if (d_dens_prev) {
-        cudaFree(d_dens_prev);
-    }
+    if (h_u) free(h_u);
+    if (h_v) free(h_v);
+    if (h_u_prev) free(h_u_prev);
+    if (h_v_prev) free(h_v_prev);
+    if (h_dens) free(h_dens);
+    if (h_dens_prev) free(h_dens_prev);
+    if (d_u) cudaFree(d_u);
+    if (d_v) cudaFree(d_v);
+    if (d_u_prev) cudaFree(d_u_prev);
+    if (d_v_prev) cudaFree(d_v_prev);
+    if (d_dens) cudaFree(d_dens);
+    if (d_dens_prev) cudaFree(d_dens_prev);
 }
 
 static void clear_data(void)
@@ -95,7 +71,7 @@ static void clear_data(void)
     int i, size = (N + 2) * (N + 2);
 
     for (i = 0; i < size; i++) {
-        u[i] = v[i] = u_prev[i] = v_prev[i] = dens[i] = dens_prev[i] = 0.0f;
+        h_u[i] = h_v[i] = h_u_prev[i] = h_v_prev[i] = h_dens[i] = h_dens_prev[i] = 0.0f;
     }
 }
 
@@ -103,14 +79,14 @@ static int allocate_data(void)
 {
     int size = (N + 2) * (N + 2);
 
-    u = (float*)malloc(size * sizeof(float));
-    v = (float*)malloc(size * sizeof(float));
-    u_prev = (float*)malloc(size * sizeof(float));
-    v_prev = (float*)malloc(size * sizeof(float));
-    dens = (float*)malloc(size * sizeof(float));
-    dens_prev = (float*)malloc(size * sizeof(float));
+    h_u = (float*)malloc(size * sizeof(float));
+    h_v = (float*)malloc(size * sizeof(float));
+    h_u_prev = (float*)malloc(size * sizeof(float));
+    h_v_prev = (float*)malloc(size * sizeof(float));
+    h_dens = (float*)malloc(size * sizeof(float));
+    h_dens_prev = (float*)malloc(size * sizeof(float));
 
-    if (!u || !v || !u_prev || !v_prev || !dens || !dens_prev) {
+    if (!h_u || !h_v || !h_u_prev || !h_v_prev || !h_dens || !h_dens_prev) {
         fprintf(stderr, "cannot allocate data\n");
         return (0);
     }
@@ -191,7 +167,7 @@ static void draw_velocity(void)
             y = (j - 0.5f) * h;
 
             glVertex2f(x, y);
-            glVertex2f(x + u[IX(i, j)], y + v[IX(i, j)]);
+            glVertex2f(x + h_u[IX(i, j)], y + h_v[IX(i, j)]);
         }
     }
 
@@ -212,10 +188,10 @@ static void draw_density(void)
         for (j = 0; j <= N; j++) {
             y = (j - 0.5f) * h;
 
-            d00 = dens[IX(i, j)];
-            d01 = dens[IX(i, j + 1)];
-            d10 = dens[IX(i + 1, j)];
-            d11 = dens[IX(i + 1, j + 1)];
+            d00 = h_dens[IX(i, j)];
+            d01 = h_dens[IX(i, j + 1)];
+            d10 = h_dens[IX(i + 1, j)];
+            d11 = h_dens[IX(i + 1, j + 1)];
 
             glColor3f(d00, d00, d00);
             glVertex2f(x, y);
@@ -350,27 +326,52 @@ static void idle_func(void)
     static double react_ns_p_cell = 0.0;
     static double vel_ns_p_cell = 0.0;
     static double dens_ns_p_cell = 0.0;
+    static double init_memcpy_ms_p_cell = 0.0;
+    static double end_memcpy_ms_p_cell = 0.0;
+    size_t size = (N + 2) * (N + 2);
 
     start_t = wtime();
-    react(dens_prev, u_prev, v_prev);
+    react(h_dens_prev, h_u_prev, h_v_prev);
     react_ns_p_cell += 1.0e9 * (wtime() - start_t) / (N * N);
 
     start_t = wtime();
-    vel_step(N, u, d_u, v, d_v, u_prev, d_u_prev, v_prev, d_v_prev, visc, dt);
+    cudaMemcpy(d_u, h_u, size * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_v, h_v, size * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_u_prev, h_u_prev, size * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_v_prev, h_v_prev, size * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_dens, h_dens, size * sizeof(float), cudaMemcpyHostToDevice);
+    cudaMemcpy(d_dens_prev, h_dens_prev, size * sizeof(float), cudaMemcpyHostToDevice);
+    init_memcpy_ms_p_cell += 1.0e3 * (wtime() - start_t) / (N * N);
+
+    start_t = wtime();
+    vel_step(N, d_u, d_v, d_u_prev, d_v_prev, visc, dt);
     vel_ns_p_cell += 1.0e9 * (wtime() - start_t) / (N * N);
 
     start_t = wtime();
-    dens_step(N, dens, d_dens, dens_prev, d_dens_prev, u, v, diff, dt);
+    dens_step(N, d_dens, d_dens_prev, d_u, d_v, diff, dt);
     dens_ns_p_cell += 1.0e9 * (wtime() - start_t) / (N * N);
 
+    start_t = wtime();
+    cudaMemcpy(h_u, d_u, size * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_v, d_v, size * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_u_prev, d_u_prev, size * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_v_prev, d_v_prev, size * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_dens, d_dens, size * sizeof(float), cudaMemcpyDeviceToHost);
+    cudaMemcpy(h_dens_prev, d_dens_prev, size * sizeof(float), cudaMemcpyDeviceToHost);
+    end_memcpy_ms_p_cell += 1.0e3 * (wtime() - start_t) / (N * N);
+
     if (1.0 < wtime() - one_second) { /* at least 1s between stats */
-        printf("%lf, %lf, %lf, %lf: ns per cell total, react, vel_step, dens_step\n",
-               (react_ns_p_cell + vel_ns_p_cell + dens_ns_p_cell) / times,
-               react_ns_p_cell / times, vel_ns_p_cell / times, dens_ns_p_cell / times);
+        printf("%lf, %lf, %lf, %lf, %lf, %lf: ns per cell total, react, vel_step, dens_step, imemcpy, ememcpy\n",
+               (react_ns_p_cell + vel_ns_p_cell + dens_ns_p_cell + 
+                init_memcpy_ms_p_cell + end_memcpy_ms_p_cell) / times,
+               react_ns_p_cell / times, vel_ns_p_cell / times, dens_ns_p_cell / times,
+               init_memcpy_ms_p_cell / times, end_memcpy_ms_p_cell / times);
         one_second = wtime();
         react_ns_p_cell = 0.0;
+        init_memcpy_ms_p_cell = 0.0;
         vel_ns_p_cell = 0.0;
         dens_ns_p_cell = 0.0;
+        end_memcpy_ms_p_cell = 0.0;
         times = 1;
     } else {
         times++;
